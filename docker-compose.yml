@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: devpulse
+      POSTGRES_PASSWORD: devpulse
+      POSTGRES_DB: devpulse
+    ports:
+      - "5432:5432"
+
+  api:
+    build: ./api
+    depends_on: [redis, postgres]
+    environment:
+      REDIS_HOST: redis
+      WAREHOUSE_URL: postgresql://devpulse:devpulse@postgres:5432/devpulse
+    ports:
+      - "8000:8000"

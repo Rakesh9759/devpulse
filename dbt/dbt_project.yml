@@ -1,0 +1,14 @@
+name: devpulse
+version: "1.0.0"
+config-version: 2
+
+profile: devpulse
+
+model-paths: ["models"]
+
+models:
+  devpulse:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

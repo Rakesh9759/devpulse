@@ -1,0 +1,23 @@
+devpulse:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      user: "{{ env_var('POSTGRES_USER', 'devpulse') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'devpulse') }}"
+      port: 5432
+      dbname: "{{ env_var('POSTGRES_DB', 'devpulse') }}"
+      schema: public
+      threads: 4
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: TRANSFORMER
+      database: DEVPULSE
+      warehouse: WH_XS
+      schema: analytics
+      threads: 4

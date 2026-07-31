@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devpulse-api
+  labels:
+    app: devpulse-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devpulse-api
+  template:
+    metadata:
+      labels:
+        app: devpulse-api
+    spec:
+      containers:
+        - name: api
+          # Replace OWNER with your GitHub username/org (must match the
+          # image pushed by .github/workflows/ci-cd.yml).
+          image: ghcr.io/OWNER/devpulse-api:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: REDIS_HOST
+              value: devpulse-redis
+            - name: WAREHOUSE_URL
+              # Create this secret before applying:
+              #   kubectl create secret generic devpulse-warehouse \
+              #     --from-literal=url="snowflake://user:pass@account/DEVPULSE/analytics?warehouse=WH_XS"
+              valueFrom:
+                secretKeyRef:
+                  name: devpulse-warehouse
+                  key: url
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: devpulse-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: devpulse-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

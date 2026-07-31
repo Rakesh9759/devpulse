@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: fleet_events
+        description: >
+          Raw build/test events landed by the Spark Structured Streaming job's
+          cold path into Iceberg, exposed to the warehouse as an external
+          table (or synced via periodic COPY INTO for Snowflake).
