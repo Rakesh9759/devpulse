@@ -4,11 +4,6 @@ Fleet event producer.
 Simulates build/test telemetry across a fake device fleet (macOS, iOS, iPadOS,
 watchOS, tvOS x M1/M2/M3/Intel hardware) and publishes events to Kafka.
 
-This stands in for the real signal source in a Core-OS-style system: instead
-of pulling from a build farm's real API, we generate statistically realistic
-events so the rest of the pipeline (Kafka -> Spark -> Iceberg/Redis -> API ->
-dashboard) can be built and demoed end to end.
-
 Run:
     python fleet_event_producer.py --rate 5   # ~5 events/sec
 """

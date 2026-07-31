@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel
 
 
@@ -17,7 +15,7 @@ class PlatformTrend(BaseModel):
     platform: str
     build_count: int
     success_rate: float
-    p95_duration_seconds: Optional[float] = None
+    p95_duration_seconds: float | None = None
 
 
 class FlakyTest(BaseModel):

@@ -21,11 +21,15 @@ import os
 
 import redis
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    avg, col, count, expr, from_json, sum as _sum, window
-)
+from pyspark.sql.functions import avg, col, count, expr, from_json, window
+from pyspark.sql.functions import sum as _sum
 from pyspark.sql.types import (
-    BooleanType, DoubleType, StringType, StructField, StructType, TimestampType
+    BooleanType,
+    DoubleType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
 )
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
