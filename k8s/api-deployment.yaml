@@ -4,20 +4,22 @@ metadata:
   name: devpulse-api
   labels:
     app: devpulse-api
+
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: devpulse-api
+
   template:
     metadata:
       labels:
         app: devpulse-api
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: api
-          # Replace OWNER with your GitHub username/org (must match the
-          # image pushed by .github/workflows/ci-cd.yml).
           image: ghcr.io/rakesh9759/devpulse-api:latest
           ports:
             - containerPort: 8000
@@ -25,9 +27,6 @@ spec:
             - name: REDIS_HOST
               value: devpulse-redis
             - name: WAREHOUSE_URL
-              # Create this secret before applying:
-              #   kubectl create secret generic devpulse-warehouse \
-              #     --from-literal=url="snowflake://user:pass@account/DEVPULSE/analytics?warehouse=WH_XS"
               valueFrom:
                 secretKeyRef:
                   name: devpulse-warehouse
