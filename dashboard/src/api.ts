@@ -17,6 +17,15 @@ export interface PlatformTrend {
   p95_duration_seconds: number | null;
 }
 
+export interface FlakyTest {
+  suite: string;
+  platform: string;
+  hardware: string;
+  flaky_runs_7d: number;
+  total_runs_7d: number;
+  flake_rate: number;
+}
+
 export async function getLiveBuildHealth(): Promise<LiveBuildHealth[]> {
   const res = await fetch(`${API_BASE}/live/build-health`);
   if (!res.ok) throw new Error("Failed to fetch live build health");
@@ -26,5 +35,11 @@ export async function getLiveBuildHealth(): Promise<LiveBuildHealth[]> {
 export async function getTrends(days = 30): Promise<PlatformTrend[]> {
   const res = await fetch(`${API_BASE}/analytics/trends?days=${days}`);
   if (!res.ok) throw new Error("Failed to fetch trends");
+  return res.json();
+}
+
+export async function getFlakyTests(limit = 10): Promise<FlakyTest[]> {
+  const res = await fetch(`${API_BASE}/analytics/flaky-tests?limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch flaky tests");
   return res.json();
 }
