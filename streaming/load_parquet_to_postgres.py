@@ -19,7 +19,7 @@ from sqlalchemy import create_engine, text
 
 COLD_SINK_PATH = os.environ.get("COLD_SINK_PATH", "/tmp/devpulse/raw_events")
 POSTGRES_URL = os.environ.get(
-    "WAREHOUSE_URL", "postgresql://devpulse:devpulse@localhost:5432/devpulse"
+    "WAREHOUSE_URL", "postgresql://devpulse:devpulse@localhost:5433/devpulse"
 )
 
 
