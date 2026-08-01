@@ -19,3 +19,4 @@ dbt/dbt_packages/
 # env/secrets
 .env
 kubeconfig.yaml
+.b64
