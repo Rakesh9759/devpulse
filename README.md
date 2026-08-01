@@ -116,27 +116,144 @@ GHCR, then updates the deployment's image on merge to `main`.
 8. **Swap in the real backends** — point `WAREHOUSE_URL` at Snowflake and
    configure a real Iceberg catalog for the streaming job's cold path.
 
-## Local dev quickstart
+## How to run this (Windows + WSL2, verified steps)
+
+This is the exact sequence that gets a fully working local pipeline — every
+step here was hit and fixed during actual setup, not theoretical.
+
+### One-time setup
+
+**1. Install Docker Desktop** — enable WSL2 integration (default). Launch it
+and let it finish initializing before continuing.
+
+**2. Install WSL2 + Ubuntu** (Spark runs inside WSL — native Windows Spark
+needs Hadoop native libs and is fragile; WSL sidesteps that entirely):
+```powershell
+wsl --install
+```
+Restart if prompted, then finish Ubuntu's first-run setup (username/password,
+local to WSL only).
+
+**3. Inside WSL (Ubuntu): install Java, build tools, and a Python venv**
+```bash
+sudo apt update
+sudo apt install -y openjdk-17-jdk python3-pip python3-venv python3-full \
+  build-essential libpq-dev
+python3 -m venv ~/devpulse-venv
+source ~/devpulse-venv/bin/activate
+```
+Ubuntu blocks system-wide `pip install` by default (PEP 668) — always use
+this venv for anything Spark/streaming-related. Reactivate it
+(`source ~/devpulse-venv/bin/activate`) every time you open a new WSL
+terminal for this project.
+
+**4. Install Node.js** (Windows side, for the dashboard) — download the LTS
+installer from nodejs.org rather than Chocolatey (fewer permission issues),
+or if using Chocolatey, run PowerShell **as Administrator**.
+
+### Every time you want to run the full stack
+
+You'll end up with **5 terminals** running simultaneously. Open them in this
+order:
+
+**Terminal 1 (Windows) — infra:**
+```powershell
+cd devpulse
+docker compose up -d zookeeper kafka redis postgres
+docker compose ps   # confirm all 4 show "running", postgres shows 5433->5432/tcp
+```
+
+**Terminal 2 (Windows) — producer:**
+```powershell
+cd devpulse/producer
+python -m pip install -r requirements.txt
+python fleet_event_producer.py --rate 5
+```
+Leave running — it prints nothing while it works.
+
+**Terminal 3 (WSL) — Spark streaming job:**
+```bash
+source ~/devpulse-venv/bin/activate
+cd /mnt/c/path/to/devpulse/streaming
+pip install -r requirements.txt
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+  spark_streaming_job.py
+```
+Leave running. First launch downloads the Kafka connector jar (~1 min), then
+prints periodic micro-batch progress as JSON — that's normal, not an error.
+
+**Terminal 4 (Windows) — API:**
+```powershell
+cd devpulse/api
+python -m pip install fastapi uvicorn[standard] redis sqlalchemy psycopg2-binary pydantic
+$env:REDIS_HOST="localhost"
+$env:WAREHOUSE_URL="postgresql://devpulse:devpulse@localhost:5433/devpulse"
+python -m uvicorn app.main:app --reload
+```
+(Skip `snowflake-sqlalchemy` locally — it needs MSVC build tools to compile
+`cffi` from source and isn't needed until you're pointing at real Snowflake.)
+
+**Terminal 5 (Windows) — dashboard:**
+```powershell
+cd devpulse/dashboard
+npm install
+npm run dev
+```
+Open **http://localhost:5173**. The live table should populate within ~15s.
+
+### Populate the batch/analytics side (trend chart, flaky-test leaderboard)
+
+The live table works as soon as Terminal 3 is running. The **trend chart**
+and **flaky test leaderboard** read from Postgres via dbt, which needs one
+manual bridge step since local dev has no real Iceberg catalog:
+
+**Terminal 3 or a new WSL terminal (venv active), after Spark has run a
+few minutes:**
+```bash
+python load_parquet_to_postgres.py
+```
+Prints `Loaded N rows into raw.fleet_events`.
 
 ```bash
-docker compose up -d
-python producer/fleet_event_producer.py --rate 5
-
-# separate terminal: streaming job (defaults to parquet cold-path sink,
-# no Iceberg catalog needed for local dev)
-spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
-  streaming/spark_streaming_job.py
-
-# bridge the parquet cold-path output into Postgres so dbt has a source
-python streaming/load_parquet_to_postgres.py
-
-# run the batch transform
-cd dbt && dbt run --profiles-dir . --target dev && dbt test --profiles-dir . --target dev
-
-# API and dashboard
-cd ../api && uvicorn app.main:app --reload
-cd ../dashboard && npm install && npm run dev
+pip install dbt-postgres
+cd ../dbt
+dbt run --profiles-dir . --target dev
+dbt test --profiles-dir . --target dev
 ```
+Refresh the dashboard — the trend chart and flaky test leaderboard should
+now show data. Re-run this loader + dbt pair periodically to refresh the
+batch views with newer events.
+
+### Verifying each layer independently (useful when debugging)
+
+```bash
+# Kafka has events flowing
+docker exec -it devpulse-kafka-1 kafka-console-consumer \
+  --bootstrap-server localhost:9092 --topic fleet.events.macos \
+  --from-beginning --max-messages 3
+
+# Redis has hot-path data
+docker exec -it devpulse-redis-1 redis-cli KEYS "live:*"
+docker exec -it devpulse-redis-1 redis-cli HGETALL "live:build_health:macOS:M2"
+```
+```powershell
+# API is serving both route groups
+curl http://localhost:8000/live/build-health
+curl http://localhost:8000/analytics/trends
+curl http://localhost:8000/analytics/flaky-tests
+```
+
+### Common gotchas from actual setup (in case you hit them again)
+
+| Symptom | Fix |
+|---|---|
+| `pip`/`node`/`doctl` "not recognized" right after install | Close and reopen the terminal — PATH doesn't refresh in the current session |
+| `ModuleNotFoundError: kafka.vendor.six.moves` | `kafka-python` is unmaintained; use `kafka-python-ng` instead (already in `producer/requirements.txt`) |
+| pandas/pyarrow/psycopg2/sqlalchemy fail to build from source | Python 3.14 is very new; use the version floors already in `requirements.txt` (`>=`) rather than exact pins |
+| Postgres `port already allocated` | Something else (often a native Postgres install) is already on 5432 — this repo's `docker-compose.yml` already remaps to `5433` |
+| `type "timestamp_ntz" does not exist` in dbt | That's Snowflake-only syntax; staging models use plain `timestamp` so they work on both |
+| Trend chart shows one label repeated with a fake "wiggle" | Don't chart the mart's per-platform rows directly — aggregate to one point per date first (see `TrendChart.tsx`) |
+| k8s pod `ImagePullBackOff` / `401 Unauthorized` | GHCR packages are private by default; either make the package public or use an `imagePullSecret` (see `k8s/api-deployment.yaml`) |
 
 ## Config changes required before this runs end to end
 
@@ -177,3 +294,29 @@ with local-dev-friendly defaults, a few still need real credentials.
 - Airflow's `sync_iceberg_external_table` task currently runs the local
   Postgres loader; swap in a `SnowflakeOperator` + real `REFRESH`/`COPY INTO`
   once Snowflake is live
+
+## Screenshots
+
+![DevPulse dashboard](docs/screenshots/01-dashboard.png)
+*Live build health table, platform breakdown chart, 30-day trend, and flaky
+test leaderboard — all reading real data from the running pipeline.*
+
+![Architecture diagram](docs/screenshots/02-architecture.png)
+*Producer → Kafka → Spark Structured Streaming (hot path to Redis, cold path
+to the lake) → dbt/Postgres → FastAPI → React dashboard.*
+
+![Spark Structured Streaming micro-batch progress](docs/screenshots/03-spark-streaming.png)
+*A single micro-batch (batch 47): 213 events processed, ~178 rows/sec,
+watermark tracking, and per-partition state store metrics — the streaming
+job actually running, not mocked.*
+
+![Kubernetes pods and rolling deployment](docs/screenshots/04-kubernetes-pods.png)
+*`kubectl get pods` / `get deployment` mid-rollout: old replicas terminating
+as new ones come up healthy, `2/2` ready on the API deployment.*
+
+![GitHub Actions pipeline, all green](docs/screenshots/05-github-actions.png)
+*`test` → `build-and-push` → `deploy` succeeding end to end in 2m 21s.*
+
+To reproduce or update these screenshots yourself, see the "How to run
+this" section above for getting the pipeline running, then capture each
+view as described in the captions.
