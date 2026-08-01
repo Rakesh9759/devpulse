@@ -1,7 +1,7 @@
 select
     event_id,
     build_event_id,
-    cast(timestamp as timestamp_ntz) as test_ts,
+    cast(timestamp as timestamp) as test_ts,
     date(timestamp) as test_date,
     platform,
     hardware,
